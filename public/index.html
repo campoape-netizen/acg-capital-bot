@@ -337,14 +337,17 @@
       if (trades.length === 0) {
         tbody.innerHTML = '<tr><td colspan="4" style="text-align: center; padding: 20px; color: #64748B;">No trades yet</td></tr>';
       } else {
-        tbody.innerHTML = trades.slice(-10).map(t => `
+        tbody.innerHTML = trades.slice(-10).map(t => {
+          const color = t.pnl >= 0 ? '#10B981' : '#F87171';
+          return `
           <tr style="border-bottom: 1px solid rgba(59, 130, 246, 0.05);">
             <td style="padding: 8px; font-size: 12px;">${new Date(t.timestamp).toLocaleTimeString()}</td>
             <td style="padding: 8px;">${t.strategy || 'N/A'}</td>
-            <td style="padding: 8px; color: ${t.pnl >= 0 ? '#10B981' : '#F87171';};">${t.pnl >= 0 ? '+' : ''}$${(t.pnl || 0).toFixed(2)}</td>
+            <td style="padding: 8px; color: ${color};">${t.pnl >= 0 ? '+' : ''}$${(t.pnl || 0).toFixed(2)}</td>
             <td style="padding: 8px; font-size: 12px; color: #94A3B8;">${t.status || 'PENDING'}</td>
           </tr>
-        `).join('');
+        `;
+        }).join('');
       }
     }
     
