@@ -182,7 +182,148 @@ app.get('/', (req, res) => {
   res.sendFile(__dirname + '/public/index.html');
 });
 
-// Start Server
+// Start Server// ===== RPC TESTING =====
+app.post('/api/rpc/test', auth, async (req, res) => {
+  const { rpc } = req.body;
+  
+  try {
+    const startTime = Date.now();
+    let success = false;
+    let latency = 0;
+
+    if (rpc === 'helius') {
+      const heliusKey = process.env.HELIUS_API_KEY;
+      if (!heliusKey) {
+        return res.json({ success: false, error: 'Helius API key not configured' });
+      }
+
+      try {
+        const response = await axios.post(
+          'https://api.helius.xyz/v0/rpc',
+          {
+            jsonrpc: '2.0',
+            id: 1,
+            method: 'getHealth',
+          },
+          {
+            headers: { 'Authorization': `Bearer ${heliusKey}` },
+            timeout: 5000,
+          }
+        );
+
+        latency = Date.now() - startTime;
+        success = response.status === 200;
+      } catch (error) {
+        latency = Date.now() - startTime;
+      }
+    } else if (rpc === 'quicknode') {
+      const quicknodeUrl = process.env.QUICKNODE_API_KEY;
+      if (!quicknodeUrl) {
+        return res.json({ success: false, error: 'QuickNode API key not configured' });
+      }
+
+      try {
+        const response = await axios.post(
+          quicknodeUrl,
+          {
+            jsonrpc: '2.0',
+            id: 1,
+            method: 'getHealth',
+          },
+          { timeout: 5000 }
+        );
+
+        latency = Date.now() - startTime;
+        success = response.status === 200;
+      } catch (error) {
+        latency = Date.now() - startTime;
+      }
+    }
+
+    if (success) {
+      res.json({
+        success: true,
+        rpc,
+        latency,
+        status: 'online',
+      });
+    } else {
+      res.json({
+        success: false,
+        rpc,
+        latency,
+        status: 'offline',
+      });
+    }
+  } catch (error) {
+    res.json({ success: false, error: error.message });
+  }
+});
+
+app.post('/api/wallet/balance', auth, async (req, res) => {
+  const { publicKey } = req.body;
+
+  if (!publicKey) {
+    return res.status(400).json({ error: 'Public key required' });
+  }
+
+  try {
+    const heliusKey = process.env.HELIUS_API_KEY;
+    if (!heliusKey) {
+      return res.json({ success: false, error: 'Helius API key not configured' });
+    }
+
+    const response = await axios.get(
+      `https://api.helius.xyz/v0/addresses/${publicKey}/balances?api-key=${heliusKey}`
+    );
+
+    const data = response.data;
+    const solBalance = data.nativeBalance ? data.nativeBalance / 1_000_000_000 : 0;
+
+    const priceData = await axios.get(
+      'https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd',
+      { timeout: 5000 }
+    );
+
+    const solPrice = priceData.data.solana.usd || 180;
+    const totalValue = solBalance * solPrice;
+
+    res.json({
+      success: true,
+      balance: {
+        SOL: solBalance,
+        solPrice,
+        totalValue,
+      },
+    });
+  } catch (error) {
+    res.json({
+      success: false,
+      error: error.message,
+    });
+  }
+});
+
+app.post('/api/wallet/connect', auth, async (req, res) => {
+  const { publicKey } = req.body;
+
+  if (!publicKey) {
+    return res.status(400).json({ error: 'Public key required' });
+  }
+
+  try {
+    res.json({
+      success: true,
+      message: 'Wallet connected',
+      publicKey,
+    });
+  } catch (error) {
+    res.json({
+      success: false,
+      error: error.message,
+    });
+  }
+});
 const PORT = process.env.PORT || 3001;
 server.listen(PORT, () => {
   console.log(`
