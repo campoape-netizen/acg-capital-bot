@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>ACG Capital - Trading Platform</title>
   <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+  <script async src="https://phantom.app/script.js"></script>
   <style>
     * {
       margin: 0;
@@ -1234,6 +1235,192 @@
     let token = localStorage.getItem('token');
     const API_URL = window.location.origin;
 
+    // ===== PHANTOM WALLET REAL CONNECTION =====
+    async function connectPhantom() {
+      try {
+        const provider = window.solana;
+        if (!provider) {
+          showPopup('Phantom Not Found', 'Please install Phantom Wallet extension from https://phantom.app');
+          return;
+        }
+
+        if (provider.isConnected) {
+          const publicKey = provider.publicKey.toString();
+          await loadWalletBalance(publicKey);
+          showPopup('Wallet Connected', 'Phantom wallet is already connected');
+          return;
+        }
+
+        const resp = await provider.connect();
+        const publicKey = resp.publicKey.toString();
+
+        const backendResponse = await fetch(API_URL + '/api/wallet/connect', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer ' + token,
+          },
+          body: JSON.stringify({ publicKey }),
+        });
+
+        const backendData = await backendResponse.json();
+
+        if (backendData.success) {
+          document.getElementById('phantomStatus').textContent = 'Connected';
+          document.getElementById('phantomStatus').style.color = 'var(--color-success)';
+          document.getElementById('phantomKey').textContent = publicKey;
+
+          await loadWalletBalance(publicKey);
+
+          showPopup('Success', 'Phantom wallet connected successfully!');
+        } else {
+          showPopup('Error', backendData.error);
+        }
+      } catch (error) {
+        console.error('Connection error:', error);
+        if (error.code === 4001) {
+          showPopup('Connection Rejected', 'You rejected the wallet connection request');
+        } else {
+          showPopup('Error', error.message);
+        }
+      }
+    }
+
+    async function loadWalletBalance(publicKey) {
+      try {
+        const response = await fetch(API_URL + '/api/wallet/balance', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer ' + token,
+          },
+          body: JSON.stringify({ publicKey }),
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+          const sol = data.balance.SOL || 0;
+          const usdValue = data.balance.totalValue || 0;
+
+          document.getElementById('solBalance').textContent = sol.toFixed(4) + ' SOL';
+          document.getElementById('walletValue').textContent = '$' + usdValue.toFixed(2);
+        }
+      } catch (error) {
+        console.error('Balance error:', error);
+      }
+    }
+
+    // ===== RPC TESTING REAL =====
+    async function testRPC(rpcName) {
+      const btn = event.target;
+      const originalText = btn.textContent;
+      btn.disabled = true;
+      btn.textContent = 'Testing...';
+
+      try {
+        const response = await fetch(API_URL + '/api/rpc/test', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer ' + token,
+          },
+          body: JSON.stringify({ rpc: rpcName }),
+        });
+
+        const data = await response.json();
+
+        const statusEl = document.getElementById(rpcName + 'Status');
+        const statusBadgeEl = document.getElementById(rpcName + 'StatusBadge');
+        const latencyEl = document.getElementById(rpcName + 'Latency');
+        const latencyBadgeEl = document.getElementById(rpcName + 'LatencyBadge');
+
+        if (data.success) {
+          statusEl.textContent = 'Online';
+          statusEl.style.color = 'var(--color-success)';
+          statusBadgeEl.textContent = 'Online';
+          statusBadgeEl.style.color = 'var(--color-success)';
+          latencyEl.textContent = 'Latency: ' + data.latency + ' ms';
+          latencyBadgeEl.textContent = data.latency + ' ms';
+
+          showPopup('RPC Online', rpcName + ' is responding (' + data.latency + 'ms)');
+        } else {
+          statusEl.textContent = 'Offline';
+          statusEl.style.color = 'var(--color-danger)';
+          statusBadgeEl.textContent = 'Offline';
+          statusBadgeEl.style.color = 'var(--color-danger)';
+          latencyEl.textContent = 'Latency: -- ms';
+          latencyBadgeEl.textContent = '-- ms';
+
+          showPopup('RPC Offline', data.error || rpcName + ' is not responding');
+        }
+      } catch (error) {
+        console.error('RPC test error:', error);
+        showPopup('Error', 'Failed to test RPC: ' + error.message);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = originalText;
+      }
+    }
+
+    // ===== AUTO TEST RPC ON LOAD =====
+    async function autoTestRPCs() {
+      setTimeout(() => testRPCBackgroundHelius(), 2000);
+      setTimeout(() => testRPCBackgroundQuickNode(), 3500);
+    }
+
+    async function testRPCBackgroundHelius() {
+      try {
+        const response = await fetch(API_URL + '/api/rpc/test', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer ' + token,
+          },
+          body: JSON.stringify({ rpc: 'helius' }),
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+          document.getElementById('heliusStatus').textContent = 'Online';
+          document.getElementById('heliusStatus').style.color = 'var(--color-success)';
+          document.getElementById('heliusStatusBadge').textContent = 'Online';
+          document.getElementById('heliusStatusBadge').style.color = 'var(--color-success)';
+          document.getElementById('heliusLatency').textContent = 'Latency: ' + data.latency + ' ms';
+          document.getElementById('heliusLatencyBadge').textContent = data.latency + ' ms';
+        }
+      } catch (error) {
+        console.error('Helius auto test error:', error);
+      }
+    }
+
+    async function testRPCBackgroundQuickNode() {
+      try {
+        const response = await fetch(API_URL + '/api/rpc/test', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer ' + token,
+          },
+          body: JSON.stringify({ rpc: 'quicknode' }),
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+          document.getElementById('quicknodeStatus').textContent = 'Online';
+          document.getElementById('quicknodeStatus').style.color = 'var(--color-success)';
+          document.getElementById('quicknodeStatusBadge').textContent = 'Online';
+          document.getElementById('quicknodeStatusBadge').style.color = 'var(--color-success)';
+          document.getElementById('quicknodeLatency').textContent = 'Latency: ' + data.latency + ' ms';
+          document.getElementById('quicknodeLatencyBadge').textContent = data.latency + ' ms';
+        }
+      } catch (error) {
+        console.error('QuickNode auto test error:', error);
+      }
+    }
+
     // ===== LOGIN =====
     async function login() {
       const username = document.getElementById('username').value;
@@ -1283,6 +1470,7 @@
       document.getElementById('loginWrapper').style.display = 'none';
       document.getElementById('dashboardWrapper').classList.add('active');
       loadDashboard();
+      autoTestRPCs();
     }
 
     async function loadDashboard() {
@@ -1312,7 +1500,9 @@
       document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
 
       document.getElementById(page).classList.add('active');
-      event.target.classList.add('active');
+      if (event && event.target) {
+        event.target.classList.add('active');
+      }
 
       const titles = {
         dashboard: 'Dashboard',
@@ -1368,21 +1558,9 @@
       showPopup('Kill Switch Activated', 'All trading has been stopped immediately.');
     }
 
-    // ===== WALLET =====
-    function connectPhantom() {
-      alert('Phantom wallet connection would open here');
-      document.getElementById('phantomStatus').textContent = 'Connected';
-      document.getElementById('phantomStatus').style.color = 'var(--color-success)';
-    }
-
-    // ===== RPC =====
-    function testRPC(rpc) {
-      alert('Testing ' + rpc + ' endpoint...');
-    }
-
     // ===== TAX =====
     function calculateTax() {
-      alert('Tax calculation would process here');
+      showPopup('Tax Calculation', 'Tax period calculation feature coming soon');
     }
 
     // ===== UTILS =====
