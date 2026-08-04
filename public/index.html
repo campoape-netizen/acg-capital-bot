@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ACG Capital Bot v14.0</title>
+  <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto';
+      background: linear-gradient(135deg, #0F172A 0%, #000000 100%);
+      color: #F1F5F9;
+      min-height: 100vh;
+    }
+    
+    .login-wrapper {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: linear-gradient(135deg, #0F172A 0%, #1E293B 100%);
+    }
+    
+    .login-card {
+      background: rgba(15, 23, 42, 0.95);
+      border: 1px solid rgba(59, 130, 246, 0.3);
+      border-radius: 16px;
+      padding: 48px;
+      width: 100%;
+      max-width: 420px;
+      box-shadow: 0 25px 50px rgba(0, 0, 0, 0.5);
+    }
+    
+    .login-header h1 {
+      font-size: 36px;
+      font-weight: 700;
+      color: #3B82F6;
+      margin-bottom: 8px;
+    }
+    
+    .login-header p {
+      color: #94A3B8;
+      font-size: 13px;
+    }
+    
+    .form-group {
+      margin: 20px 0;
+    }
+    
+    .form-group label {
+      display: block;
+      color: #CBD5E1;
+      font-size: 12px;
+      font-weight: 600;
+      margin-bottom: 8px;
+    }
+    
+    .form-group input {
+      width: 100%;
+      padding: 12px 16px;
+      background: rgba(15, 23, 42, 0.8);
+      border: 1px solid rgba(59, 130, 246, 0.2);
+      border-radius: 8px;
+      color: #F1F5F9;
+      font-size: 14px;
+    }
+    
+    .form-group input:focus {
+      outline: none;
+      border-color: #3B82F6;
+      background: rgba(59, 130, 246, 0.05);
+    }
+    
+    button {
+      width: 100%;
+      padding: 12px;
+      margin-top: 20px;
+      background: linear-gradient(135deg, #3B82F6 0%, #2563EB 100%);
+      color: white;
+      border: none;
+      border-radius: 8px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.3s;
+    }
+    
+    button:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 10px 30px rgba(59, 130, 246, 0.4);
+    }
+    
+    .dashboard-wrapper {
+      display: none;
+      min-height: 100vh;
+    }
+    
+    .dashboard-wrapper.active {
+      display: block;
+    }
+    
+    .topbar {
+      height: 60px;
+      background: rgba(15, 23, 42, 0.8);
+      border-bottom: 1px solid rgba(59, 130, 246, 0.1);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0 24px;
+    }
+    
+    .main-content {
+      padding: 24px;
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+    
+    .card {
+      background: rgba(30, 41, 59, 0.5);
+      border: 1px solid rgba(59, 130, 246, 0.1);
+      border-radius: 12px;
+      padding: 24px;
+      margin-bottom: 20px;
+    }
+    
+    .metric-card {
+      background: rgba(15, 23, 42, 0.6);
+      border: 1px solid rgba(59, 130, 246, 0.1);
+      border-radius: 12px;
+      padding: 16px;
+      display: inline-block;
+      margin-right: 20px;
+      margin-bottom: 20px;
+    }
+    
+    .metric-label {
+      font-size: 11px;
+      color: #94A3B8;
+      font-weight: 600;
+      text-transform: uppercase;
+    }
+    
+    .metric-value {
+      font-size: 24px;
+      font-weight: 700;
+      color: #3B82F6;
+      margin-top: 8px;
+    }
+    
+    .mode-toggle {
+      margin: 20px 0;
+    }
+    
+    .mode-btn {
+      padding: 12px 24px;
+      margin-right: 10px;
+      border: 1px solid rgba(59, 130, 246, 0.3);
+      background: rgba(15, 23, 42, 0.6);
+      color: #94A3B8;
+      border-radius: 8px;
+      cursor: pointer;
+      font-weight: 600;
+      transition: all 0.3s;
+    }
+    
+    .mode-btn.active {
+      background: linear-gradient(135deg, #3B82F6 0%, #2563EB 100%);
+      border-color: #3B82F6;
+      color: white;
+    }
+    
+    .error {
+      background: rgba(244, 63, 94, 0.1);
+      color: #F87171;
+      padding: 12px;
+      border-radius: 6px;
+      margin-bottom: 20px;
+      display: none;
+    }
+    
+    .error.show {
+      display: block;
+    }
+  </style>
+</head>
+<body>
+  <!-- LOGIN -->
+  <div id="loginWrapper" class="login-wrapper">
+    <div class="login-card">
+      <div class="login-header">
+        <h1>⚡ ACG Capital</h1>
+        <p>Trading Bot v14.0</p>
+      </div>
+      
+      <div class="error" id="errorMsg"></div>
+      
+      <div class="form-group">
+        <label>Username</label>
+        <input type="text" id="username" placeholder="ACG01 or guest">
+      </div>
+      
+      <div class="form-group">
+        <label>Password</label>
+        <input type="password" id="password" placeholder="(guest: leave empty)">
+      </div>
+      
+      <button onclick="login()">Login</button>
+      <button onclick="guestLogin()" style="background: linear-gradient(135deg, #475569 0%, #334155 100%);">Guest</button>
+    </div>
+  </div>
+  
+  <!-- DASHBOARD -->
+  <div id="dashboardWrapper" class="dashboard-wrapper">
+    <div class="topbar">
+      <h1>ACG Capital Bot v14.0</h1>
+      <div>
+        <span id="modeLabel" style="margin-right: 20px;">📊 PAPER</span>
+        <span id="capitalLabel" style="margin-right: 20px;">$50.00</span>
+        <button onclick="logout()" style="width: auto; padding: 8px 16px;">Logout</button>
+      </div>
+    </div>
+    
+    <div class="main-content">
+      <h2>Dashboard</h2>
+      
+      <div class="mode-toggle">
+        <button class="mode-btn active" onclick="setMode('PAPER')">📊 Paper Trading</button>
+        <button class="mode-btn" onclick="switchToReal()">💰 Real Trading</button>
+      </div>
+      
+      <div class="metric-card">
+        <div class="metric-label">Capital</div>
+        <div class="metric-value" id="capitalValue">$50.00</div>
+      </div>
+      
+      <div class="metric-card">
+        <div class="metric-label">P&L</div>
+        <div class="metric-value" id="pnlValue" style="color: #10B981;">+$0.00</div>
+      </div>
+      
+      <div class="metric-card">
+        <div class="metric-label">Trades</div>
+        <div class="metric-value" id="tradesValue">0</div>
+      </div>
+      
+      <div class="card">
+        <h3>Recent Trades</h3>
+        <table style="width: 100%; margin-top: 16px;">
+          <thead>
+            <tr style="border-bottom: 1px solid rgba(59, 130, 246, 0.1);">
+              <th style="text-align: left; padding: 8px;">Time</th>
+              <th style="text-align: left; padding: 8px;">Strategy</th>
+              <th style="text-align: left; padding: 8px;">P&L</th>
+              <th style="text-align: left; padding: 8px;">Status</th>
+            </tr>
+          </thead>
+          <tbody id="tradesBody">
+            <tr><td colspan="4" style="text-align: center; padding: 20px; color: #64748B;">No trades yet</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+  
+  <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+  <script>
+    const socket = io();
+    let token = localStorage.getItem('token');
+    const API_URL = window.location.origin;
+    
+    async function login() {
+      const username = document.getElementById('username').value;
+      const password = document.getElementById('password').value;
+      
+      const response = await fetch(API_URL + '/api/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password }),
+      });
+      
+      const data = await response.json();
+      
+      if (data.success) {
+        token = data.token;
+        localStorage.setItem('token', token);
+        showDashboard();
+      } else {
+        showError('Invalid credentials');
+      }
+    }
+    
+    function guestLogin() {
+      fetch(API_URL + '/api/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: 'guest' }),
+      })
+      .then(r => r.json())
+      .then(data => {
+        if (data.success) {
+          token = data.token;
+          localStorage.setItem('token', token);
+          showDashboard();
+        }
+      });
+    }
+    
+    function showDashboard() {
+      document.getElementById('loginWrapper').style.display = 'none';
+      document.getElementById('dashboardWrapper').classList.add('active');
+      loadDashboard();
+    }
+    
+    async function loadDashboard() {
+      if (!token) return;
+      
+      const response = await fetch(API_URL + '/api/metrics', {
+        headers: { 'Authorization': 'Bearer ' + token },
+      });
+      const metrics = await response.json();
+      
+      document.getElementById('capitalValue').textContent = '$' + metrics.currentCapital.toFixed(2);
+      document.getElementById('capitalLabel').textContent = '$' + metrics.currentCapital.toFixed(2);
+      document.getElementById('pnlValue').textContent = (metrics.totalPnL >= 0 ? '+' : '') + '$' + metrics.totalPnL.toFixed(2);
+      document.getElementById('tradesValue').textContent = metrics.totalTrades;
+      
+      const tradesResponse = await fetch(API_URL + '/api/trades', {
+        headers: { 'Authorization': 'Bearer ' + token },
+      });
+      const trades = await tradesResponse.json();
+      
+      const tbody = document.getElementById('tradesBody');
+      if (trades.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="4" style="text-align: center; padding: 20px; color: #64748B;">No trades yet</td></tr>';
+      } else {
+        tbody.innerHTML = trades.slice(-10).map(t => `
+          <tr style="border-bottom: 1px solid rgba(59, 130, 246, 0.05);">
+            <td style="padding: 8px; font-size: 12px;">${new Date(t.timestamp).toLocaleTimeString()}</td>
+            <td style="padding: 8px;">${t.strategy || 'N/A'}</td>
+            <td style="padding: 8px; color: ${t.pnl >= 0 ? '#10B981' : '#F87171';};">${t.pnl >= 0 ? '+' : ''}$${(t.pnl || 0).toFixed(2)}</td>
+            <td style="padding: 8px; font-size: 12px; color: #94A3B8;">${t.status || 'PENDING'}</td>
+          </tr>
+        `).join('');
+      }
+    }
+    
+    async function setMode(mode) {
+      const response = await fetch(API_URL + '/api/trading/mode/toggle', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+        body: JSON.stringify({ mode }),
+      });
+      
+      const data = await response.json();
+      if (data.success) {
+        document.getElementById('modeLabel').textContent = mode === 'PAPER' ? '📊 PAPER' : '🔴 REAL';
+        document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
+        event.target.classList.add('active');
+      }
+    }
+    
+    function switchToReal() {
+      if (!confirm('⚠️ Switch to REAL trading? Real money will be used.')) return;
+      if (!confirm('✋ LAST CONFIRMATION. This is irreversible.')) return;
+      
+      setMode('REAL');
+    }
+    
+    function logout() {
+      localStorage.removeItem('token');
+      location.reload();
+    }
+    
+    function showError(msg) {
+      const el = document.getElementById('errorMsg');
+      el.textContent = msg;
+      el.classList.add('show');
+      setTimeout(() => el.classList.remove('show'), 3000);
+    }
+    
+    // Socket events
+    socket.on('initial-data', (data) => {
+      console.log('Connected:', data);
+      if (token) loadDashboard();
+    });
+    
+    socket.on('trade-recorded', (data) => {
+      loadDashboard();
+    });
+    
+    socket.on('stop-total', (data) => {
+      alert('🛑 ' + data.message);
+    });
+    
+    socket.on('alert-popup', (data) => {
+      alert('⚠️ ' + data.message);
+    });
+    
+    socket.on('trading-mode-changed', (data) => {
+      document.getElementById('modeLabel').textContent = data.mode === 'PAPER' ? '📊 PAPER' : '🔴 REAL';
+    });
+    
+    // Check token on load
+    if (token) {
+      showDashboard();
+    }
+  </script>
+</body>
+</html>
