@@ -1,16 +1,6 @@
 {
   "name": "acg-capital-bot-v14",
   "version": "14.0.0",
-  "description": "Solana HFT Trading Bot",
-  "main": "src/index.js",
-  "scripts": {
-    "start": "node src/index.js",
-    "dev": "nodemon src/index.js"
-  },
-  "dependencies": {
-    {
-  "name": "acg-capital-bot-v14",
-  "version": "14.0.0",
   "description": "ACG Capital Solana Trading Bot",
   "main": "src/index.js",
   "scripts": {
