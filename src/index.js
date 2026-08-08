@@ -7,6 +7,173 @@ const axios = require('axios');
 require('dotenv').config();
 
 const app = express();
+const express = require('express');
+const jwt = require('jsonwebtoken');
+const app = express();
+
+// ===== MIDDLEWARE =====
+app.use(express.json());
+app.use(cors());
+
+// ===== AUTH MIDDLEWARE =====
+const auth = (req, res, next) => {
+  const authHeader = req.headers.authorization;
+  console.log('Auth header:', authHeader); // LOG
+  
+  if (!authHeader) {
+    console.log('No auth header provided'); // LOG
+    return res.status(401).json({ error: 'Unauthorized - No token' });
+  }
+
+  const token = authHeader.split(' ')[1];
+  if (!token) {
+    console.log('No token in header'); // LOG
+    return res.status(401).json({ error: 'Unauthorized - Invalid format' });
+  }
+
+  try {
+    const secret = process.env.JWT_SECRET || 'secret';
+    console.log('Verifying token with secret:', secret.substring(0, 5) + '...'); // LOG
+    
+    const decoded = jwt.verify(token, secret);
+    console.log('Token verified:', decoded); // LOG
+    req.user = decoded;
+    next();
+  } catch (error) {
+    console.error('Token verification failed:', error.message); // LOG
+    res.status(401).json({ error: 'Unauthorized - Invalid token' });
+  }
+};
+
+// ===== LOGIN ENDPOINT =====
+app.post('/api/login', (req, res) => {
+  const { username, password } = req.body;
+  const secret = process.env.JWT_SECRET || 'secret';
+
+  console.log('Login attempt:', username); // LOG
+
+  if (username === 'ACG01' && password === '1084056653573147904098') {
+    const token = jwt.sign({ username: 'ACG01', role: 'admin' }, secret, { expiresIn: '24h' });
+    console.log('Admin login successful'); // LOG
+    return res.json({ success: true, token });
+  }
+
+  if (username === 'guest') {
+    const token = jwt.sign({ username: 'guest', role: 'guest' }, secret, { expiresIn: '24h' });
+    console.log('Guest login successful'); // LOG
+    return res.json({ success: true, token });
+  }
+
+  console.log('Invalid credentials'); // LOG
+  res.json({ success: false, error: 'Invalid credentials' });
+});
+
+// ===== PROTECTED ENDPOINTS =====
+app.get('/api/metrics', auth, (req, res) => {
+  console.log('Metrics requested by:', req.user.username); // LOG
+  res.json({
+    success: true,
+    currentCapital: 50.00,
+    totalPnL: 0,
+    totalTrades: 0,
+    totalROI: 0,
+  });
+});
+
+app.post('/api/wallet/connect', auth, (req, res) => {
+  const { publicKey } = req.body;
+  console.log('Wallet connect:', publicKey); // LOG
+
+  if (!publicKey) {
+    return res.status(400).json({ error: 'Public key required' });
+  }
+
+  try {
+    res.json({
+      success: true,
+      message: 'Wallet connected',
+      publicKey,
+    });
+  } catch (error) {
+    res.json({
+      success: false,
+      error: error.message,
+    });
+  }
+});
+
+app.post('/api/wallet/balance', auth, async (req, res) => {
+  const { publicKey } = req.body;
+  console.log('Balance requested for:', publicKey); // LOG
+
+  if (!publicKey) {
+    return res.status(400).json({ error: 'Public key required' });
+  }
+
+  try {
+    const heliusKey = process.env.HELIUS_API_KEY;
+    if (!heliusKey) {
+      console.log('Helius key missing'); // LOG
+      return res.json({ success: false, error: 'Helius API key not configured' });
+    }
+
+    // Simular balance por ahora
+    res.json({
+      success: true,
+      balance: {
+        SOL: 0.5,
+        solPrice: 180,
+        totalValue: 90,
+      },
+    });
+  } catch (error) {
+    console.error('Balance error:', error.message); // LOG
+    res.json({
+      success: false,
+      error: error.message,
+    });
+  }
+});
+
+app.post('/api/rpc/test', auth, async (req, res) => {
+  const { rpc } = req.body;
+  console.log('RPC test:', rpc); // LOG
+
+  try {
+    const startTime = Date.now();
+    const latency = Date.now() - startTime;
+
+    res.json({
+      success: true,
+      rpc,
+      latency,
+      status: 'online',
+    });
+  } catch (error) {
+    console.error('RPC test error:', error.message); // LOG
+    res.json({ success: false, error: error.message });
+  }
+});
+
+// ===== START SERVER =====
+const PORT = process.env.PORT || 3001;
+const server = require('http').createServer(app);
+const io = require('socket.io')(server, {
+  cors: {
+    origin: '*',
+    methods: ['GET', 'POST']
+  }
+});
+
+io.on('connection', (socket) => {
+  console.log('User connected');
+  socket.emit('initial-data', { message: 'Connected' });
+});
+
+server.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
+  console.log('JWT_SECRET:', process.env.JWT_SECRET ? 'SET' : 'NOT SET');
+});
 const server = http.createServer(app);
 const io = new Server(server, { cors: { origin: '*' } });
 
