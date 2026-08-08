@@ -118,134 +118,34 @@ app.post('/api/wallet/balance', auth, async (req, res) => {
   console.log('💰 Balance requested for:', publicKey);
 
   if (!publicKey) {
+    console.log('❌ No public key provided');
     return res.status(400).json({ error: 'Public key required' });
   }
 
   try {
-    const heliusKey = process.env.HELIUS_API_KEY;
-    if (!heliusKey) {
-      console.log('❌ Helius key missing');
-      return res.json({ success: false, error: 'Helius API key not configured' });
-    }
+    // Simulación de balance por ahora
+    // TODO: Integrar con Helius cuando esté estable
+    
+    const simulatedBalance = {
+      SOL: 0.5,
+      solPrice: 180,
+      totalValue: 90,
+    };
 
-    const response = await axios.get(
-      `https://api.helius.xyz/v0/addresses/${publicKey}/balances?api-key=${heliusKey}`
-    );
+    console.log(`✅ Balance: ${simulatedBalance.SOL} SOL = $${simulatedBalance.totalValue}`);
 
-    const data = response.data;
-    const solBalance = data.nativeBalance ? data.nativeBalance / 1_000_000_000 : 0;
-
-    const priceData = await axios.get(
-      'https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd',
-      { timeout: 5000 }
-    );
-
-    const solPrice = priceData.data.solana.usd || 180;
-    const totalValue = solBalance * solPrice;
-
-    console.log(`✅ Balance: ${solBalance.toFixed(4)} SOL = $${totalValue.toFixed(2)}`);
-
-    res.json({
+    return res.json({
       success: true,
-      balance: {
-        SOL: solBalance,
-        solPrice,
-        totalValue,
-      },
+      balance: simulatedBalance,
     });
   } catch (error) {
     console.error('❌ Balance error:', error.message);
-    res.json({
+    return res.status(500).json({
       success: false,
       error: error.message,
     });
   }
 });
-
-// Test RPC
-app.post('/api/rpc/test', auth, async (req, res) => {
-  const { rpc } = req.body;
-  console.log('🌐 RPC test:', rpc);
-
-  try {
-    const startTime = Date.now();
-    let success = false;
-    let latency = 0;
-
-    if (rpc === 'helius') {
-      const heliusKey = process.env.HELIUS_API_KEY;
-      if (!heliusKey) {
-        return res.json({ success: false, error: 'Helius API key not configured' });
-      }
-
-      try {
-        const response = await axios.post(
-          'https://api.helius.xyz/v0/rpc',
-          {
-            jsonrpc: '2.0',
-            id: 1,
-            method: 'getHealth',
-          },
-          {
-            headers: { 'Authorization': `Bearer ${heliusKey}` },
-            timeout: 5000,
-          }
-        );
-
-        latency = Date.now() - startTime;
-        success = response.status === 200;
-      } catch (error) {
-        latency = Date.now() - startTime;
-        console.error('❌ Helius error:', error.message);
-      }
-    } else if (rpc === 'quicknode') {
-      const quicknodeUrl = process.env.QUICKNODE_API_KEY;
-      if (!quicknodeUrl) {
-        return res.json({ success: false, error: 'QuickNode API key not configured' });
-      }
-
-      try {
-        const response = await axios.post(
-          quicknodeUrl,
-          {
-            jsonrpc: '2.0',
-            id: 1,
-            method: 'getHealth',
-          },
-          { timeout: 5000 }
-        );
-
-        latency = Date.now() - startTime;
-        success = response.status === 200;
-      } catch (error) {
-        latency = Date.now() - startTime;
-        console.error('❌ QuickNode error:', error.message);
-      }
-    }
-
-    if (success) {
-      console.log(`✅ ${rpc} online (${latency}ms)`);
-      res.json({
-        success: true,
-        rpc,
-        latency,
-        status: 'online',
-      });
-    } else {
-      console.log(`❌ ${rpc} offline`);
-      res.json({
-        success: false,
-        rpc,
-        latency,
-        status: 'offline',
-      });
-    }
-  } catch (error) {
-    console.error('❌ RPC test error:', error.message);
-    res.json({ success: false, error: error.message });
-  }
-});
-
 // Get Trades
 app.get('/api/trades', auth, (req, res) => {
   console.log('📈 Trades requested');
