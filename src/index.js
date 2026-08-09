@@ -4,7 +4,6 @@ const { Server } = require('socket.io');
 const cors = require('cors');
 const jwt = require('jsonwebtoken');
 const axios = require('axios');
-const { Connection, PublicKey, LAMPORTS_PER_SOL } = require('@solana/web3.js');
 require('dotenv').config();
 
 // ===== INIT =====
@@ -55,6 +54,21 @@ function getRpcUrl() {
     return process.env.QUICKNODE_API_KEY; // QuickNode guarda la URL completa
   }
   throw new Error('No RPC configurado (falta HELIUS_API_KEY o QUICKNODE_API_KEY)');
+}
+
+// Llamada JSON-RPC directa por HTTP (sin @solana/web3.js, evita el
+// conflicto de dependencias con rpc-websockets / uuid ESM)
+async function solanaRpcCall(method, params = []) {
+  const rpcUrl = getRpcUrl();
+  const response = await axios.post(
+    rpcUrl,
+    { jsonrpc: '2.0', id: 1, method, params },
+    { timeout: 8000, headers: { 'Content-Type': 'application/json' } }
+  );
+  if (response.data.error) {
+    throw new Error(response.data.error.message || 'RPC error');
+  }
+  return response.data.result;
 }
 
 // ===== GLOBAL STATE =====
@@ -136,7 +150,7 @@ app.post('/api/wallet/connect', auth, (req, res) => {
   });
 });
 
-// Get Wallet Balance (REAL, ya no simulado)
+// Get Wallet Balance (REAL, vía JSON-RPC directo por HTTP)
 app.post('/api/wallet/balance', auth, async (req, res) => {
   const { publicKey } = req.body;
   console.log('💰 Balance requested for:', publicKey);
@@ -146,13 +160,10 @@ app.post('/api/wallet/balance', auth, async (req, res) => {
   }
 
   try {
-    const rpcUrl = getRpcUrl();
-    const connection = new Connection(rpcUrl, 'confirmed');
-    const pubKey = new PublicKey(publicKey);
-
-    // Balance real en lamports → SOL
-    const lamports = await connection.getBalance(pubKey);
-    const solBalance = lamports / LAMPORTS_PER_SOL;
+    // getBalance devuelve lamports (1 SOL = 1,000,000,000 lamports)
+    const result = await solanaRpcCall('getBalance', [publicKey]);
+    const lamports = result.value;
+    const solBalance = lamports / 1_000_000_000;
 
     // Precio real de SOL en USD (CoinGecko, sin API key)
     let solPrice = 0;
@@ -188,7 +199,7 @@ app.post('/api/wallet/balance', auth, async (req, res) => {
   }
 });
 
-// Test RPC Endpoint (con URL de Helius corregida)
+// Test RPC Endpoint
 app.post('/api/rpc/test', auth, async (req, res) => {
   const { rpc } = req.body;
   console.log('🌐 RPC test:', rpc);
@@ -218,16 +229,10 @@ app.post('/api/rpc/test', auth, async (req, res) => {
       }
 
       try {
-        // URL correcta del RPC estándar de Helius (antes apuntaba a
-        // api.helius.xyz/v0/rpc, que es la API "enhanced", no el RPC JSON estándar)
         const heliusRpcUrl = `https://mainnet.helius-rpc.com/?api-key=${heliusKey}`;
         const response = await axios.post(
           heliusRpcUrl,
-          {
-            jsonrpc: '2.0',
-            id: 1,
-            method: 'getHealth',
-          },
+          { jsonrpc: '2.0', id: 1, method: 'getHealth' },
           { timeout: 5000 }
         );
         latency = Date.now() - startTime;
@@ -255,11 +260,7 @@ app.post('/api/rpc/test', auth, async (req, res) => {
       try {
         const response = await axios.post(
           quicknodeUrl,
-          {
-            jsonrpc: '2.0',
-            id: 1,
-            method: 'getHealth',
-          },
+          { jsonrpc: '2.0', id: 1, method: 'getHealth' },
           { timeout: 5000 }
         );
         latency = Date.now() - startTime;
