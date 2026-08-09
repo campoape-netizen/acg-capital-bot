@@ -1236,123 +1236,99 @@
     const API_URL = window.location.origin;
 
     // ===== PHANTOM WALLET REAL CONNECTION WITH LOGGING =====
-    async function connectPhantom() {
-      try {
-        console.log('1. Checking Phantom...');
-        const provider = window.solana;
-        if (!provider) {
-          console.error('Phantom not found');
-          showPopup('Phantom Not Found', 'Please install Phantom Wallet extension from https://phantom.app');
-          return;
-        }
-
-        console.log('2. Phantom found, checking connection...');
-        if (provider.isConnected) {
-          console.log('3. Already connected');
-          const publicKey = provider.publicKey.toString();
-          await loadWalletBalance(publicKey);
-          showPopup('Wallet Connected', 'Phantom wallet is already connected');
-          return;
-        }
-
-        console.log('3. Requesting connection...');
-        const resp = await provider.connect();
-        const publicKey = resp.publicKey.toString();
-        console.log('4. Connected! Public Key:', publicKey);
-
-        console.log('5. Sending to backend...');
-        const backendResponse = await fetch(API_URL + '/api/wallet/connect', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': 'Bearer ' + token,
-          },
-          body: JSON.stringify({ publicKey }),
-        });
-
-        console.log('6. Backend response status:', backendResponse.status);
-        const backendData = await backendResponse.json();
-        console.log('7. Backend response data:', backendData);
-
-        if (backendData.success) {
-          console.log('8. Success - Updating UI...');
-          
-          const statusEl = document.getElementById('phantomStatus');
-          if (statusEl) {
-            statusEl.textContent = 'Connected';
-            statusEl.style.color = 'var(--color-success)';
-            console.log('9. Status element updated');
-          }
-
-          const keyEl = document.getElementById('phantomKey');
-          if (keyEl) {
-            keyEl.textContent = publicKey;
-            console.log('10. Key element updated');
-          }
-
-          console.log('11. Loading balance...');
-          await loadWalletBalance(publicKey);
-
-          console.log('12. Done!');
-          showPopup('Success', 'Phantom wallet connected successfully!');
-        } else {
-          console.error('Backend error:', backendData.error);
-          showPopup('Error', backendData.error || 'Connection failed');
-        }
-      } catch (error) {
-        console.error('Connection error full:', error);
-        if (error.code === 4001) {
-          showPopup('Connection Rejected', 'You rejected the wallet connection request');
-        } else {
-          showPopup('Error', error.message);
-        }
-      }
+   async function connectPhantom() {
+  try {
+    console.log('1. Checking Phantom...');
+    const provider = window.solana;
+    
+    if (!provider) {
+      console.error('Phantom not found');
+      showPopup('Phantom Not Found', 'Please install Phantom Wallet extension from https://phantom.app');
+      return;
     }
 
-    async function loadWalletBalance(publicKey) {
-      try {
-        console.log('Loading balance for:', publicKey);
-        
-        const response = await fetch(API_URL + '/api/wallet/balance', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': 'Bearer ' + token,
-          },
-          body: JSON.stringify({ publicKey }),
-        });
+    console.log('2. Requesting connection from Phantom...');
+    
+    // Conectar (esto abre el popup de Phantom)
+    const resp = await provider.connect();
+    const publicKey = resp.publicKey.toString();
+    console.log('3. Connected! Public Key:', publicKey);
 
-        console.log('Balance response status:', response.status);
-        const data = await response.json();
-        console.log('Balance data:', data);
+    // Enviar al backend para registrar
+    console.log('4. Sending to backend...');
+    const backendResponse = await fetch(API_URL + '/api/wallet/connect', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ' + token,
+      },
+      body: JSON.stringify({ publicKey }),
+    });
 
-        if (data.success) {
-          const sol = data.balance.SOL || 0;
-          const usdValue = data.balance.totalValue || 0;
+    const backendData = await backendResponse.json();
+    console.log('5. Backend response:', backendData);
 
-          console.log('Updating balance UI - SOL:', sol, 'USD:', usdValue);
+    if (backendData.success) {
+      console.log('6. Updating UI with real data...');
+      
+      // Actualizar status
+      document.getElementById('phantomStatus').textContent = 'Connected';
+      document.getElementById('phantomStatus').style.color = 'var(--color-success)';
+      
+      // Actualizar public key
+      document.getElementById('phantomKey').textContent = publicKey;
+      
+      // Cargar balance real
+      await loadWalletBalance(publicKey);
 
-          const solEl = document.getElementById('solBalance');
-          const usdEl = document.getElementById('walletValue');
-
-          if (solEl) {
-            solEl.textContent = sol.toFixed(4) + ' SOL';
-            console.log('SOL element updated');
-          }
-
-          if (usdEl) {
-            usdEl.textContent = '$' + usdValue.toFixed(2);
-            console.log('USD element updated');
-          }
-        } else {
-          console.error('Balance error:', data.error);
-          showPopup('Balance Error', data.error || 'Failed to load balance');
-        }
-      } catch (error) {
-        console.error('Balance fetch error:', error);
-        showPopup('Error', 'Failed to load balance: ' + error.message);
-      }
+      showPopup('Success', 'Phantom wallet connected successfully!');
+    } else {
+      showPopup('Error', backendData.error || 'Connection failed');
     }
+  } catch (error) {
+    console.error('Connection error:', error);
+    
+    if (error.code === 4001) {
+      showPopup('Connection Rejected', 'You rejected the wallet connection in Phantom');
+    } else {
+      showPopup('Error', error.message);
+    }
+  }
+}
+
+async function loadWalletBalance(publicKey) {
+  try {
+    console.log('Loading balance for:', publicKey);
+    
+    const response = await fetch(API_URL + '/api/wallet/balance', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ' + token,
+      },
+      body: JSON.stringify({ publicKey }),
+    });
+
+    const data = await response.json();
+    console.log('Balance response:', data);
+
+    if (data.success) {
+      const sol = data.balance.SOL || 0;
+      const usdValue = data.balance.totalValue || 0;
+
+      console.log(`Updating UI: ${sol.toFixed(4)} SOL = $${usdValue.toFixed(2)}`);
+
+      document.getElementById('solBalance').textContent = sol.toFixed(4) + ' SOL';
+      document.getElementById('walletValue').textContent = '$' + usdValue.toFixed(2);
+    } else {
+      console.error('Balance error:', data.error);
+      showPopup('Balance Error', data.error || 'Failed to load balance');
+    }
+  } catch (error) {
+    console.error('Balance fetch error:', error);
+    showPopup('Error', 'Failed to load balance: ' + error.message);
+  }
+}
 
     // ===== RPC TESTING WITH LOGGING =====
     async function testRPC(rpcName) {
