@@ -13,11 +13,7 @@
     "cors": "^2.8.5",
     "axios": "^1.4.0",
     "dotenv": "^16.3.1",
-    "jsonwebtoken": "^9.0.1",
-    "@solana/web3.js": "^1.95.3"
-  },
-  "overrides": {
-    "rpc-websockets": "7.11.0"
+    "jsonwebtoken": "^9.0.1"
   },
   "engines": {
     "node": "18.x"
