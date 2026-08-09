@@ -16,6 +16,9 @@
     "jsonwebtoken": "^9.0.1",
     "@solana/web3.js": "^1.95.3"
   },
+  "overrides": {
+    "rpc-websockets": "7.11.0"
+  },
   "engines": {
     "node": "18.x"
   }
