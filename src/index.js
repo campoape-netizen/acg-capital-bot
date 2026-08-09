@@ -4,6 +4,7 @@ const { Server } = require('socket.io');
 const cors = require('cors');
 const jwt = require('jsonwebtoken');
 const axios = require('axios');
+const { Connection, PublicKey, LAMPORTS_PER_SOL } = require('@solana/web3.js');
 require('dotenv').config();
 
 // ===== INIT =====
@@ -20,7 +21,7 @@ app.use(express.static('public'));
 // ===== AUTH MIDDLEWARE =====
 const auth = (req, res, next) => {
   const authHeader = req.headers.authorization;
-  
+
   if (!authHeader) {
     console.log('❌ No auth header');
     return res.status(401).json({ error: 'Unauthorized - No token' });
@@ -44,13 +45,25 @@ const auth = (req, res, next) => {
   }
 };
 
+// ===== RPC HELPER =====
+// Prioriza Helius si está configurado, si no usa QuickNode.
+function getRpcUrl() {
+  if (process.env.HELIUS_API_KEY) {
+    return `https://mainnet.helius-rpc.com/?api-key=${process.env.HELIUS_API_KEY}`;
+  }
+  if (process.env.QUICKNODE_API_KEY) {
+    return process.env.QUICKNODE_API_KEY; // QuickNode guarda la URL completa
+  }
+  throw new Error('No RPC configurado (falta HELIUS_API_KEY o QUICKNODE_API_KEY)');
+}
+
 // ===== GLOBAL STATE =====
 const appState = {
   tradingMode: 'PAPER',
   isKilled: false,
   portfolioLoss: 0,
   crashScore: 0,
-  
+
   database: {
     trades: [],
     metrics: {
@@ -73,10 +86,15 @@ const appState = {
 app.post('/api/login', (req, res) => {
   const { username, password } = req.body;
   const secret = process.env.JWT_SECRET || 'secret';
+  const adminPassword = process.env.ADMIN_PASSWORD; // ← ya NO está hardcodeada
 
   console.log('🔐 Login attempt:', username);
 
-  if (username === 'ACG01' && password === '1084056653573147904098') {
+  if (!adminPassword) {
+    console.error('⚠️ ADMIN_PASSWORD no está configurada en las variables de entorno');
+  }
+
+  if (username === 'ACG01' && adminPassword && password === adminPassword) {
     const token = jwt.sign({ username: 'ACG01', role: 'admin' }, secret, { expiresIn: '24h' });
     console.log('✅ Admin login successful');
     return res.json({ success: true, token });
@@ -118,7 +136,7 @@ app.post('/api/wallet/connect', auth, (req, res) => {
   });
 });
 
-// Get Wallet Balance
+// Get Wallet Balance (REAL, ya no simulado)
 app.post('/api/wallet/balance', auth, async (req, res) => {
   const { publicKey } = req.body;
   console.log('💰 Balance requested for:', publicKey);
@@ -128,18 +146,38 @@ app.post('/api/wallet/balance', auth, async (req, res) => {
   }
 
   try {
-    // Datos simulados por ahora
-    const simulatedBalance = {
-      SOL: 0.5,
-      solPrice: 180,
-      totalValue: 90,
-    };
+    const rpcUrl = getRpcUrl();
+    const connection = new Connection(rpcUrl, 'confirmed');
+    const pubKey = new PublicKey(publicKey);
 
-    console.log(`✅ Balance: ${simulatedBalance.SOL} SOL = $${simulatedBalance.totalValue}`);
+    // Balance real en lamports → SOL
+    const lamports = await connection.getBalance(pubKey);
+    const solBalance = lamports / LAMPORTS_PER_SOL;
+
+    // Precio real de SOL en USD (CoinGecko, sin API key)
+    let solPrice = 0;
+    try {
+      const priceResponse = await axios.get(
+        'https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd',
+        { timeout: 5000 }
+      );
+      solPrice = priceResponse.data.solana.usd;
+    } catch (priceError) {
+      console.error('⚠️ No se pudo obtener precio de SOL:', priceError.message);
+      solPrice = 0; // Si falla el precio, igual devolvemos el balance real
+    }
+
+    const totalValue = solBalance * solPrice;
+
+    console.log(`✅ Balance real: ${solBalance} SOL = $${totalValue.toFixed(2)}`);
 
     return res.json({
       success: true,
-      balance: simulatedBalance,
+      balance: {
+        SOL: solBalance,
+        solPrice,
+        totalValue,
+      },
     });
   } catch (error) {
     console.error('❌ Balance error:', error.message);
@@ -150,7 +188,7 @@ app.post('/api/wallet/balance', auth, async (req, res) => {
   }
 });
 
-// Test RPC Endpoint (FIX #1)
+// Test RPC Endpoint (con URL de Helius corregida)
 app.post('/api/rpc/test', auth, async (req, res) => {
   const { rpc } = req.body;
   console.log('🌐 RPC test:', rpc);
@@ -168,7 +206,7 @@ app.post('/api/rpc/test', auth, async (req, res) => {
     // Test Helius
     if (rpc === 'helius') {
       const heliusKey = process.env.HELIUS_API_KEY;
-      
+
       if (!heliusKey) {
         console.log('❌ Helius API key not configured');
         return res.json({
@@ -180,17 +218,17 @@ app.post('/api/rpc/test', auth, async (req, res) => {
       }
 
       try {
+        // URL correcta del RPC estándar de Helius (antes apuntaba a
+        // api.helius.xyz/v0/rpc, que es la API "enhanced", no el RPC JSON estándar)
+        const heliusRpcUrl = `https://mainnet.helius-rpc.com/?api-key=${heliusKey}`;
         const response = await axios.post(
-          'https://api.helius.xyz/v0/rpc',
+          heliusRpcUrl,
           {
             jsonrpc: '2.0',
             id: 1,
             method: 'getHealth',
           },
-          {
-            headers: { 'Authorization': `Bearer ${heliusKey}` },
-            timeout: 5000,
-          }
+          { timeout: 5000 }
         );
         latency = Date.now() - startTime;
         success = response.status === 200;
@@ -283,7 +321,7 @@ app.post('/api/trades', auth, (req, res) => {
   appState.database.metrics.totalPnL += pnl;
   appState.database.metrics.currentCapital = 50 + appState.database.metrics.totalPnL;
   appState.database.metrics.totalTrades++;
-  
+
   if (pnl > 0) appState.database.metrics.winCount++;
   appState.database.metrics.winRate = appState.database.metrics.winCount / appState.database.metrics.totalTrades;
 
@@ -390,6 +428,7 @@ server.listen(PORT, () => {
 ╚════════════════════════════════════════════════════════════╝
   `);
   console.log('🔐 JWT_SECRET:', process.env.JWT_SECRET ? '✅ SET' : '⚠️  NOT SET');
+  console.log('🔐 ADMIN_PASSWORD:', process.env.ADMIN_PASSWORD ? '✅ SET' : '⚠️  NOT SET');
   console.log('🔑 Helius API:', process.env.HELIUS_API_KEY ? '✅ SET' : '⚠️  NOT SET');
   console.log('🔑 QuickNode API:', process.env.QUICKNODE_API_KEY ? '✅ SET' : '⚠️  NOT SET');
 });
