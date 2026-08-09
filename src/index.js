@@ -65,7 +65,11 @@ const appState = {
   },
 };
 
-// ===== LOGIN ENDPOINT =====
+// ═══════════════════════════════════════════════════════════
+// ===== ENDPOINTS (SIN PROTECCIÓN) =====
+// ═══════════════════════════════════════════════════════════
+
+// Login
 app.post('/api/login', (req, res) => {
   const { username, password } = req.body;
   const secret = process.env.JWT_SECRET || 'secret';
@@ -88,7 +92,9 @@ app.post('/api/login', (req, res) => {
   res.json({ success: false, error: 'Invalid credentials' });
 });
 
-// ===== PROTECTED ENDPOINTS =====
+// ═══════════════════════════════════════════════════════════
+// ===== ENDPOINTS (CON PROTECCIÓN auth) =====
+// ═══════════════════════════════════════════════════════════
 
 // Get Metrics
 app.get('/api/metrics', auth, (req, res) => {
@@ -118,14 +124,11 @@ app.post('/api/wallet/balance', auth, async (req, res) => {
   console.log('💰 Balance requested for:', publicKey);
 
   if (!publicKey) {
-    console.log('❌ No public key provided');
     return res.status(400).json({ error: 'Public key required' });
   }
 
   try {
-    // Simulación de balance por ahora
-    // TODO: Integrar con Helius cuando esté estable
-    
+    // Datos simulados por ahora
     const simulatedBalance = {
       SOL: 0.5,
       solPrice: 180,
@@ -146,6 +149,119 @@ app.post('/api/wallet/balance', auth, async (req, res) => {
     });
   }
 });
+
+// Test RPC Endpoint (FIX #1)
+app.post('/api/rpc/test', auth, async (req, res) => {
+  const { rpc } = req.body;
+  console.log('🌐 RPC test:', rpc);
+
+  if (!rpc) {
+    return res.status(400).json({ success: false, error: 'RPC name required' });
+  }
+
+  try {
+    const startTime = Date.now();
+    let success = false;
+    let latency = 0;
+    let error = null;
+
+    // Test Helius
+    if (rpc === 'helius') {
+      const heliusKey = process.env.HELIUS_API_KEY;
+      
+      if (!heliusKey) {
+        console.log('❌ Helius API key not configured');
+        return res.json({
+          success: false,
+          rpc: 'helius',
+          status: 'offline',
+          error: 'API key not configured',
+        });
+      }
+
+      try {
+        const response = await axios.post(
+          'https://api.helius.xyz/v0/rpc',
+          {
+            jsonrpc: '2.0',
+            id: 1,
+            method: 'getHealth',
+          },
+          {
+            headers: { 'Authorization': `Bearer ${heliusKey}` },
+            timeout: 5000,
+          }
+        );
+        latency = Date.now() - startTime;
+        success = response.status === 200;
+      } catch (err) {
+        latency = Date.now() - startTime;
+        error = err.message;
+        console.error('❌ Helius error:', error);
+      }
+    }
+    // Test QuickNode
+    else if (rpc === 'quicknode') {
+      const quicknodeUrl = process.env.QUICKNODE_API_KEY;
+
+      if (!quicknodeUrl) {
+        console.log('❌ QuickNode API key not configured');
+        return res.json({
+          success: false,
+          rpc: 'quicknode',
+          status: 'offline',
+          error: 'API key not configured',
+        });
+      }
+
+      try {
+        const response = await axios.post(
+          quicknodeUrl,
+          {
+            jsonrpc: '2.0',
+            id: 1,
+            method: 'getHealth',
+          },
+          { timeout: 5000 }
+        );
+        latency = Date.now() - startTime;
+        success = response.status === 200;
+      } catch (err) {
+        latency = Date.now() - startTime;
+        error = err.message;
+        console.error('❌ QuickNode error:', error);
+      }
+    }
+
+    // Return result
+    if (success) {
+      console.log(`✅ ${rpc} online (${latency}ms)`);
+      return res.json({
+        success: true,
+        rpc,
+        latency,
+        status: 'online',
+      });
+    } else {
+      console.log(`❌ ${rpc} offline`);
+      return res.json({
+        success: false,
+        rpc,
+        latency,
+        status: 'offline',
+        error,
+      });
+    }
+  } catch (error) {
+    console.error('❌ RPC test error:', error.message);
+    return res.json({
+      success: false,
+      status: 'offline',
+      error: error.message,
+    });
+  }
+});
+
 // Get Trades
 app.get('/api/trades', auth, (req, res) => {
   console.log('📈 Trades requested');
@@ -159,32 +275,33 @@ app.post('/api/trades', auth, (req, res) => {
     ...req.body,
     timestamp: Date.now(),
   };
-  
+
   appState.database.trades.push(trade);
-  
+
   // Update metrics
   const pnl = trade.pnl || 0;
   appState.database.metrics.totalPnL += pnl;
   appState.database.metrics.currentCapital = 50 + appState.database.metrics.totalPnL;
   appState.database.metrics.totalTrades++;
+  
   if (pnl > 0) appState.database.metrics.winCount++;
   appState.database.metrics.winRate = appState.database.metrics.winCount / appState.database.metrics.totalTrades;
-  
+
   // Track loss
   if (pnl < 0) {
     appState.portfolioLoss += Math.abs(pnl);
   }
-  
+
   // Check loss thresholds
   const lossPercent = (appState.portfolioLoss / 50) * 100;
-  
+
   if (lossPercent >= 7) {
     appState.isKilled = true;
     io.emit('stop-total', { message: '🛑 STOP TOTAL - 7% loss reached' });
   } else if (lossPercent >= 5) {
     io.emit('alert-popup', { message: '⚠️ ALERT - 5% loss reached' });
   }
-  
+
   io.emit('trade-recorded', { trade, metrics: appState.database.metrics });
   res.json({ success: true, trade });
 });
@@ -231,7 +348,7 @@ app.post('/api/system/reset', auth, (req, res) => {
   appState.portfolioLoss = 0;
   appState.isKilled = false;
   appState.tradingMode = 'PAPER';
-  
+
   io.emit('system-reset', { timestamp: Date.now() });
   res.json({ success: true });
 });
@@ -239,7 +356,7 @@ app.post('/api/system/reset', auth, (req, res) => {
 // ===== WEBSOCKET =====
 io.on('connection', (socket) => {
   console.log('👤 User connected:', socket.id);
-  
+
   socket.emit('initial-data', {
     metrics: appState.database.metrics,
     trades: appState.database.trades.slice(-20),
